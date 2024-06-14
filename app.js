@@ -1,6 +1,5 @@
-// These are the dependencies for this file.
-//
-// You installed the `dotenv` and `octokit` modules earlier. The `@octokit/webhooks` is a dependency of the `octokit` module, so you don't need to install it separately. The `fs` and `http` dependencies are built-in Node.js modules.
+// Reduced file - need to credit appropriate sources before adding to something used by ExpControls
+
 import dotenv from "dotenv";
 import {App} from "octokit";
 import {createNodeMiddleware} from "@octokit/webhooks";
@@ -29,45 +28,44 @@ const app = new App({
   },
 });
 
-// This defines the message that your app will post to pull requests.
-const messageForNewPRs = "Thanks for opening a new PR! Please follow our contributing guidelines to make your PR easier to review.";
-
-
-// KVLB Additions
-const query = `query get_info {
-  repository(owner:"KathrynBaker", name:"foxlease-bunting") {
-    issues(last:20, states:CLOSED) {
-      edges {
-        node {
-          title
-          url
-          labels(first:5) {
-            edges {
-              node {
-                name
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-}
-`;
-
-
-
+// OAuth token for Github to use with graphql
 const token = process.env.TOKEN;
+const owner = process.env.REPOSITORY_OWNER;
+const repo = process.env.REPOSITORY_NAME;
+console.log(repo);
 const auth = {
     headers: {
         authorization: 'token ' + token,
-        Accept: 'application/vnd.github.starfox-preview+json',
         'Content-Type': 'application/json'
     }
 };
 
 const niceRequest = async (q, a) => await graphql(q, a);
 
+// Try to get the project ID here
+const proj_id = process.env.CURRENT_PROJECT_ID;
+var projbyname = `query findProjectwithName {
+    user(login: "KathrynBaker") {
+        projectsV2(first: 10, query: "@KathrynBaker's actions test project") {
+            nodes {
+                id
+            }
+        }
+    }
+}`
+let p_query = niceRequest(projbyname, auth);
+var p_two;
+console.log('About to try setting p2, it is currently:' + p_two);
+p_query.then(function (result) { setPtwo(result) });
+console.log(`p2 may have set:` + p_two);
+
+function setPtwo(result) {
+    p_two = result;
+    console.log(result);
+    console.log('p2 has a value, perhaps: ' + p_two);
+};
+
+console.log('Looking again at p2: ' + p_two);
 
 // Event handlers
 async function handleAddedCard({octokit, payload}) {
@@ -75,66 +73,56 @@ async function handleAddedCard({octokit, payload}) {
 
 };
 
-var issue_id = "Not set yet";
-
-function something(result) {
-  console.log(`Here is a function, and what it received: `+result);
-};
-
-async function tetherend(result) {
-  console.log(`At the end of my tether`);
-  issue_id = result.repository.issue.id; 
-  console.log(issue_id)
-  
-      var mutation1 = `mutation AddReactionToIssue {
-  addReaction(input:{subjectId:"${issue_id}",content:HOORAY}) {
-    reaction {
-      content
+async function whenProposed(result) {
+    console.log('Project name??: ' + p_two);
+    var issue_id = result.repository.issue.id;
+  var mutation1 = `mutation AddReactionToIssue {
+    addReaction(input:{subjectId:"${issue_id}",content:HOORAY}) {
+        reaction {
+            content
+        }
+        subject {
+            id
+        }
     }
-    subject {
-      id
-    }
-  }
-}`
+  }`
 
-    let unhappy = niceRequest(mutation1, auth);
+    let mutate = niceRequest(mutation1, auth);
+
+    var setProj = `mutation setProject {
+          addProjectV2ItemById(input: {
+              contentId: "${issue_id}",
+              projectId: "${proj_id}"
+          })
+          {
+              item{
+                  id
+              }
+          }
+      }`
+    let setProject = niceRequest(setProj, auth);
     
-    console.log(`Aftr the mutation I hope`);
   };
 
 async function handleLabeledIssue({octokit, payload}) {
   console.log(`The issue #${payload.issue.number} has gained a label: ${payload.label.name}`);
-
-  //let testOne = niceRequest(query, auth);
-  //console.log(testOne);
-  
-  //testOne.then(function(result) {console.log(result)});
   
   if (payload.label.name == "proposal") {
     console.log(`It's a Proposal`);
     
-    var query1 = `
-    query FindIssueID {
-  repository(owner:"KathrynBaker", name:"foxlease-bunting") {
-    issue(number:${payload.issue.number}) {
-      id
-    }
-  }
-}`
-    //await graphql(query1, auth)
-    let testTwo = niceRequest(query1, auth);
-    //console.log(testTwo);
-    //var test = testTwo.then(data => issue_id);
-    //testTwo.then(function(result) {issue_id = result; console.log(issue_id)});
-    testTwo.then(function(result) {tetherend(result)});
-    //var issue_id = testTwo.then(something(result));//.repository.issue.id;
-    //var issue_id = "Not there yet";
-    //issue_id = testTwo.then(function(result) {return result.repository.issue.id});
-    console.log(`this is the outside one ` + issue_id);
-   
+    var getIssueNumber = `query FindIssueID {
+        repository(owner:"${owner}", name:"${repo}") {
+            issue(number:${payload.issue.number}) {
+                id
+            }
+        }
+    }`
+    let getNumber = niceRequest(getIssueNumber, auth);
+      getNumber.then(function (result) { whenProposed(result) });
+
+
 
   }  
-  
 };
 
 
